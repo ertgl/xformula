@@ -1,0 +1,56 @@
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+
+[tool.poetry]
+name = "xformula"
+version = "0.1.0"
+description = "Highly customizable language front-end, aimed to be a base for custom DSL evaluators."
+authors = ["Ertuğrul Keremoğlu <ertugkeremoglu@gmail.com>"]
+license = "MIT"
+readme = "README.md"
+packages = [
+	{include = "xformula", from = "src" },
+]
+
+
+[tool.poetry.dependencies]
+python = "^3.11"
+
+lark = ">=1.1.4"
+
+
+[tool.poetry.group.dev.dependencies]
+black = "^22.10.0"
+commitizen = "^2.35.0"
+isort = "^5.10.1"
+mypy = "^0.982"
+pycln = "^2.1.1"
+
+
+[tool.poetry.group.rel.dependencies]
+build = "^0.8.0"
+twine = "^4.0.1"
+
+
+[tool.commitizen]
+name = "cz_conventional_commits"
+version = "0.1.0"
+tag_format = "v$minor.$major.$patch$prerelease.$devrelease"
+version_files = [
+	"pyproject.toml:tool.poetry.version",
+	"src/xformula/__version__.py:__version__",
+]
+
+
+[tool.isort]
+profile = "black"
+known_first_party = [
+	"xformula",
+	"xformula_unittests",
+]
+
+
+[tool.pycln]
+all = true

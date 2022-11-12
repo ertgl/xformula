@@ -1,0 +1,196 @@
+// Auto-generated via xformula.syntax module
+
+%ignore WHITESPACE
+
+
+?start : simpleexpression
+
+?parenthesizedsimpleexpression : "(" simpleexpression ")"
+
+?simpleexpression : operation
+
+?operation : operationlevel40
+
+?!operationlevel40.40000 : (operationlevel40 "or")? operationlevel39
+
+?!operationlevel39.39000 : (operationlevel39 "and")? operationlevel38
+
+?!operationlevel38.38000 : (operationlevel38 "||")? operationlevel37
+
+?!operationlevel37.37000 : (operationlevel37 "&&")? operationlevel36
+
+?!operationlevel36.36000 : "not" operationlevel36
+                         | operationlevel35
+
+?!operationlevel35.35000 : (operationlevel35 "??")? operationlevel34
+
+?!operationlevel34.34000 : operationlevel33 ("?" operationlevel33 ":" operationlevel34)?
+
+?!operationlevel33.33000 : (operationlevel33 "==")? operationlevel32
+
+?!operationlevel32.32000 : (operationlevel32 "!=")? operationlevel31
+
+?!operationlevel31.31000 : (operationlevel31 ">")? operationlevel30
+
+?!operationlevel30.30000 : (operationlevel30 ">=")? operationlevel29
+
+?!operationlevel29.29000 : (operationlevel29 "!>=")? operationlevel28
+
+?!operationlevel28.28000 : (operationlevel28 "!>")? operationlevel27
+
+?!operationlevel27.27000 : (operationlevel27 "<")? operationlevel26
+
+?!operationlevel26.26000 : (operationlevel26 "<=")? operationlevel25
+
+?!operationlevel25.25000 : (operationlevel25 "!<=")? operationlevel24
+
+?!operationlevel24.24000 : (operationlevel24 "!<")? operationlevel23
+
+?!operationlevel23.23000 : (operationlevel23 "is")? operationlevel22
+
+?!operationlevel22.22000 : (operationlevel22 "!is")? operationlevel21
+
+?!operationlevel21.21000 : (operationlevel21 "is not")? operationlevel20
+
+?!operationlevel20.20000 : (operationlevel20 "in")? operationlevel19
+
+?!operationlevel19.19000 : (operationlevel19 "!in")? operationlevel18
+
+?!operationlevel18.18000 : (operationlevel18 "not in")? operationlevel17
+
+?!operationlevel17.17000 : (operationlevel17 "|")? operationlevel16
+
+?!operationlevel16.16000 : (operationlevel16 "^")? operationlevel15
+
+?!operationlevel15.15000 : (operationlevel15 "&")? operationlevel14
+
+?!operationlevel14.14000 : (operationlevel14 ">>")? operationlevel13
+
+?!operationlevel13.13000 : (operationlevel13 "<<")? operationlevel12
+
+?!operationlevel12.12000 : (operationlevel12 "-")? operationlevel11
+
+?!operationlevel11.11000 : (operationlevel11 "+")? operationlevel10
+
+?!operationlevel10.10000 : (operationlevel10 "%")? operationlevel9
+
+?!operationlevel9.9000 : (operationlevel9 "//")? operationlevel8
+
+?!operationlevel8.8000 : (operationlevel8 "/")? operationlevel7
+
+?!operationlevel7.7000 : (operationlevel7 "@")? operationlevel6
+
+?!operationlevel6.6000 : (operationlevel6 "*")? operationlevel5
+
+?!operationlevel5.5000 : "~" operationlevel5
+                       | operationlevel4
+
+?!operationlevel4.4000 : "!" operationlevel4
+                       | operationlevel3
+
+?!operationlevel3.3000 : "-" operationlevel3
+                       | operationlevel2
+
+?!operationlevel2.2000 : "+" operationlevel2
+                       | operationlevel1
+
+?!operationlevel1.1000 : (operationlevel1 "**")? operand
+
+?operand : primary
+
+?primary : term
+         | dict
+         | set
+         | list
+         | tuple
+
+dict : _wrapzeroormoreof{"{", "}", dictpair}
+
+dictpair : _separatedpair{":", simpleexpression, simpleexpression}
+
+set : _wraponeormoreof{"{", "}", simpleexpression}
+
+tuple : "(" _separatedoneormoreof{",", simpleexpression} ","? ")"
+      | "(" simpleexpression "," ")"
+      | "(" ")"
+
+list : _wrapzeroormoreof{"[", "]", simpleexpression}
+
+?term : literal
+      | identifier
+      | attribute
+      | call
+      | parenthesizedsimpleexpression
+
+call : term "(" _separatedzeroormoreof{",", callargument} "," _separatedzeroormoreof{",", callkeywordargument} ","? ")"
+     | term "(" _separatedzeroormoreof{",", callargument} ","? ")"
+     | term "(" _separatedzeroormoreof{",", callkeywordargument} ","? ")"
+     | term "(" ")"
+
+callkeywordargument : _separatedpair{"=", identifier, simpleexpression}
+
+callargument : simpleexpression
+
+attribute : attribute "." identifier
+          | primary "." identifier
+
+identifier : IDENTIFIER
+
+?literal : str
+         | complex
+         | float
+         | int
+         | bool
+         | none
+
+str : SINGLE_LINE_STR
+
+complex : COMPLEX
+
+float : FLOAT
+
+int : DECIMAL_INT
+    | HEXADECIMAL_INT
+    | OCTAL_INT
+    | BINARY_INT
+
+bool : BOOL
+
+none : NONE
+
+
+_wraponeormoreof{_tmpl_arg__left, _tmpl_arg__right, _tmpl_arg__rule} : _tmpl_arg__left _separatedoneormoreof{",", _tmpl_arg__rule} ","? _tmpl_arg__right
+                                                                     | _tmpl_arg__left _tmpl_arg__rule ","? _tmpl_arg__right
+
+_wrapzeroormoreof{_tmpl_arg__left, _tmpl_arg__right, _tmpl_arg__rule} : _wraponeormoreof{_tmpl_arg__left, _tmpl_arg__right, _tmpl_arg__rule}
+                                                                      | _tmpl_arg__left _tmpl_arg__right
+
+_separatedoneormoreof{_tmpl_arg__sep, _tmpl_arg__rule} : _separatedoneormoreof{_tmpl_arg__sep, _tmpl_arg__rule} _tmpl_arg__sep _tmpl_arg__rule
+                                                       | _tmpl_arg__rule _tmpl_arg__sep _tmpl_arg__rule
+
+_separatedzeroormoreof{_tmpl_arg__sep, _tmpl_arg__rule} : (_separatedzeroormoreof{_tmpl_arg__sep, _tmpl_arg__rule} _tmpl_arg__sep)? _tmpl_arg__rule
+
+_separatedpair{_tmpl_arg__sep, _tmpl_arg__lhs, _tmpl_arg__rhs} : _tmpl_arg__lhs _tmpl_arg__sep _tmpl_arg__rhs
+
+
+IDENTIFIER : /(?<!\d)[^\W0-9]\w*/
+
+SINGLE_LINE_STR : /\'(?:[\\\.]|[^\'\n\\])*\'|\"(?:[\\\.]|[^\"\n\\])*\"/
+
+COMPLEX.10000 : /(?:(?:(?:[0-9](?:_?[0-9])*\.(?:[0-9](?:_?[0-9])*)?|\.[0-9](?:_?[0-9])*)(?:[eE][\-\+]?[0-9](?:_?[0-9])*)?|[0-9](?:_?[0-9])*[eE][\-\+]?[0-9](?:_?[0-9])*)|(?:0(?:_?0)*|[1-9](?:_?[0-9])*))[jJ]/
+
+FLOAT.5000 : /(?:[0-9](?:_?[0-9])*\.(?:[0-9](?:_?[0-9])*)?|\.[0-9](?:_?[0-9])*)(?:[eE][\-\+]?[0-9](?:_?[0-9])*)?|[0-9](?:_?[0-9])*[eE][\-\+]?[0-9](?:_?[0-9])*/
+
+HEXADECIMAL_INT : /0[xX](?:_?[0-9a-fA-F])+/
+
+DECIMAL_INT : /0(?:_?0)*|[1-9](?:_?[0-9])*/
+
+OCTAL_INT : /0[oO](?:_?[0-7])+/
+
+BINARY_INT : /0[bB](?:_?[01])+/
+
+BOOL.2000 : /\bfalse\b|\btrue\b/
+
+NONE.2000 : /\bnone\b/
+
+WHITESPACE : /([ \f\n\t\r])+/
