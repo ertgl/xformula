@@ -23,7 +23,6 @@ class SINGLE_LINE_STR(  # NOSONAR
     ) -> str:
         any_char = self.regex.any_char
         any_char_except = self.regex.any_char_except
-        any_char_of = self.regex.any_char_of
         any_of = self.regex.any_of
         escape_char = self.regex.escape_char
         flat_zero_or_more_of = self.regex.flat_zero_or_more_of
@@ -35,14 +34,16 @@ class SINGLE_LINE_STR(  # NOSONAR
             flat_zero_or_more_of(
                 non_capturing_group(
                     any_of(
-                        any_char_of(
+                        non_capturing_group(
                             escape_char(r"\\"),
                             any_char(),
                         ),
-                        any_char_except(
-                            escape_char(quote),
-                            r"\n",
-                            escape_char(r"\\"),
+                        non_capturing_group(
+                            any_char_except(
+                                escape_char(quote),
+                                r"\n",
+                                escape_char(r"\\"),
+                            ),
                         ),
                     ),
                 ),
@@ -76,4 +77,4 @@ class SINGLE_LINE_STR(  # NOSONAR
         runtime_context: RuntimeContext,
         token: Token,
     ) -> str:
-        return bytes(token.value[1:-1], "UTF-8").decode("unicode_escape")
+        return bytes(token.value[1:-1], "unicode_escape").decode("unicode_escape")
