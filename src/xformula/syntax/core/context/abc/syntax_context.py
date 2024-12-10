@@ -195,7 +195,8 @@ class SyntaxContext:
         raise TypeError(f"invalid definition type: {definition_type!r}")
 
     def setup_features(self) -> None:
-        # todo: These get done before runtime, we still need a signal-handling mechanism.
+        # These get done before runtime,
+        # however, signal-handling mechanism can be built when needed.
         for feature in self.features.values():
             feature.pre_setup()
         for feature in self.features.values():
