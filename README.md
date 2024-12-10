@@ -1,42 +1,99 @@
 # XFormula
 
-Highly customizable language front-end, aimed to be a base
-for custom DSL evaluators.
+Highly customizable language front-end, aimed to be a base for custom
+[domain-specific language](https://en.wikipedia.org/wiki/Domain-specific_language)
+implementations.
 
----
+*With no extra limitations for use in general-purpose languages as well*.
 
-**Developer note:** I've created this library to use in many of my projects and
-decided to publish the source code, because it may help somebody to write a DSL
-compiler or evaluator can get benefit from Python ecosystem, within a reasonable
-time.
+___
 
-I couldn't write documentation because of my tight schedule in these days. 
-But I see the code as self-explanatory, feel free to read it if you're interested.
+XFormula is a language front-end tool that allows developers to define
+language syntax and semantics in the
+[OO paradigm](https://en.wikipedia.org/wiki/Object-oriented_programming)
+to achieve a high level of modularity and flexibility. For fast prototyping,
+it provides a set of built-in, commonly used general-purpose language features,
+which can be omitted or extended as needed.
 
-In the meantime, please note that **this project is still in development**.
+As a language front-end tool, XFormula does not provide any compilation or
+evaluation capabilities. Instead, it allows the definition of a very flexible
+and customizable [AST](https://en.wikipedia.org/wiki/Abstract_syntax_tree)
+structure in a modular way. Finally, it also provides a parser that can
+generate an AST based on a given string input. Due to its modularity, even
+the syntax of the language can be defined dynamically based on runtime
+conditions. This makes XFormula a very powerful tool for implementing
+languages. For example, you can modify the syntax based on the user's
+preferences, or even based on the user's role and permissions in your web
+application, etc...
 
----
+At the lowest level, XFormula is a parser generator that uses the talented
+[Lark Parser Toolkit](https://lark-parser.readthedocs.io/) under the hood.
+Lark supports LALR(1), Earley, and CYK parsing algorithms. XFormula's
+default features are designed to be compatible with the
+[LALR(1)](https://en.wikipedia.org/wiki/LALR_parser) algorithm,
+which is very fast and efficient in terms of both time (CPU) and
+space (memory).
 
+## Usage example
 
-## Features:
+Assuming you are familiar with the terminology, the best way to understand how
+to use XFormula is to check the
+[xformula.syntax.ast](src/xformula/syntax/ast/nodes/abc),
+[xformula.syntax.core.features](src/xformula/syntax/core/features), and
+[xformula.syntax.core.operations.default_operator_precedences](src/xformula/syntax/core/operations/default_operator_precedences.py#L16)
+modules.
 
-- Built on top of [Lark Parser Toolkit](https://lark-parser.readthedocs.io/en/latest/)
-- - LALR(1), Earley and CYK parsing algorithms are supported by Lark;
-    XFormula uses LALR(1) by default
-- Automatic EBNF grammar generator via declarative Python functions
-  (The final grammar generated using the default features can be found in
-  [out/Grammar.lark](https://github.com/ertgl/xformula/blob/main/out/Grammar.lark)
-  file)
-- Modular featurization system to manipulate grammar and parser context dynamically. 
-- A ready-to-use compact dialect that supports some general purpose data types
-  and basic symbols
-  (See `xformula.syntax.ast` package)
+The final [EBNF](https://en.wikipedia.org/wiki/Extended_Backus–Naur_form)
+grammar, generated automatically by XFormula using the default features,
+is dumped into the `out` directory for observation purposes only.
+See the [out/Grammar.lark](out/Grammar.lark) file.
 
-See `xformula.syntax.core.features` package and
-`xformula.syntax.core.operations.default_operator_precedences` module for more
-information about the default behaviours.
+For a quick overview of the default features and how to implement a runtime
+for the language, you can check the
+[django-xformula](https://github.com/ertgl/django-xformula) project,
+which provides a [Django](https://www.djangoproject.com/) application for
+transforming given formulas into [SQL](https://en.wikipedia.org/wiki/SQL)
+queries using Django's amazing
+[ORM](https://en.wikipedia.org/wiki/Object–relational_mapping)
+capabilities.
 
+### Dynamic syntax concept
+
+The dynamic syntax concept is a very powerful feature of XFormula. It enables
+modularity by allowing developers to tag some `non-terminals` (e.g., tagging
+[`Bool`](src/xformula/syntax/core/features/literals/definitions/non_terminals/bool.py#L22)
+as a literal) with a specific priority level, for later non-static use in
+the definition of other `non-terminals` (e.g.,
+[`Literal`](src/xformula/syntax/core/features/literals/definitions/non_terminals/literal.py#L29)).
+Plugging in or out some features does not require any changes in the syntax definition,
+and it does not break the syntax definition, even if the feature is not available.
+This way, any part of the syntax can become optional or swappable.
+
+For more low-level details, check the
+[xformula.syntax.EBNFExpressionBuilderProtocol](src/xformula/syntax/grammar/definitions/abc/ebnf_expression_builder_protocol.py#L164),
+[xformula.syntax.SyntaxContext](src/xformula/syntax/core/context/abc/syntax_context.py#L104),
+and
+[xformula.syntax.TaggedDefinitionIterator](src/xformula/syntax/core/customization/tagging/tagged_definition_iterator.py#L13)
+classes.
+
+### Portability
+
+Since Lark is available for various programming languages,
+it should be possible to use the grammars generated by XFormula
+in those languages out of the box. In order to achieve the same
+dynamic transformation capabilities of XFormula's generated parser, aligning
+specifically with
+[NonTerminalOperationClassBuilder.transform_parse_tree](src/xformula/syntax/core/features/operations/runtime/reflection/non_terminal_operation_class_builder.py#L236)
+function is necessary for automatic resolution of operator associativity and
+precedence.
+
+For the list of available Lark implementations, see the
+[extra features](https://lark-parser.readthedocs.io/en/stable/features.html#extra-features)
+section of the Lark documentation.
 
 ## License
 
-[MIT](https://github.com/ertgl/xformula/blob/main/LICENSE)
+This project is licensed under the
+[MIT License](https://opensource.org/license/mit).
+
+See the [LICENSE](LICENSE) file for more information.
