@@ -1,66 +1,161 @@
 # XFormula
 
-A highly customizable language front-end and parser generator. Designed for
-rapid prototyping of
-[domain-specific language](https://en.wikipedia.org/wiki/Domain-specific_language)
-implementations. *Applicable also for general-purpose languages.*
-
-___
+A modular language front-end and parser generator for building
+<a href="https://en.wikipedia.org/wiki/Domain-specific_language" target="_blank">domain-specific languages</a> (DSLs).
 
 ## Table of Contents
 
 - [Overview](#overview)
+  - [Core Model](#core-model)
+  - [Dynamic Syntax](#dynamic-syntax)
+  - [AST Composition](#ast-composition)
 - [Usage](#usage)
-  - [Defining Tokens](#defining-tokens)
-  - [Defining AST Nodes](#defining-ast-nodes)
-  - [Transforming Tokens into AST Nodes](#transforming-tokens-into-ast-nodes)
-  - [Setting Up the Feature](#setting-up-the-feature)
-  - [Initializing the Parser](#initializing-the-parser)
-  - [Dynamic Syntax Concept](#dynamic-syntax-concept)
+  - [Define Tokens](#define-tokens)
+  - [Define AST Nodes](#define-ast-nodes)
+  - [Connect Grammar to AST](#connect-grammar-to-ast)
+  - [Package the Syntax as a Feature](#package-the-syntax-as-a-feature)
+  - [Build the Parser](#build-the-parser)
+  - [Keeping the Grammar Small](#keeping-the-grammar-small)
 - [Portability](#portability)
-- [Real-world Example](#real-world-example)
+- [A Practical Example](#a-practical-example)
 - [License](#license)
 
 ## Overview
 
-XFormula is a language front-end tool that enables developers to define
-language syntax and semantics using the object-oriented paradigm, achieving
-exceptional modularity and flexibility. It offers a set of built-in, commonly
-used features for general-purpose languages that can be omitted or extended as
-needed for rapid prototyping.
+In XFormula, syntax is assembled from independent features. A feature can
+introduce tokens, grammar rules,
+<a href="https://en.wikipedia.org/wiki/Abstract_syntax_tree" target="_blank">AST</a>
+nodes, and the transformations that
+connect them. Features can then be combined, extended, or removed without
+rewriting the rest of the language.
 
-While XFormula itself does not provide any compilation or evaluation
-capabilities, it allows you to define a highly flexible and customizable
-[AST](https://en.wikipedia.org/wiki/Abstract_syntax_tree) structure in a
-modular way. Additionally, it includes a parser that generates an AST based on
-a given input string.
+The result is a language definition that can evolve as a system rather than as
+a single grammar file.
 
-At its core, XFormula is a parser generator that leverages the powerful
-[Lark Parser Toolkit](https://lark-parser.readthedocs.io/) under the hood. Lark
-supports [LALR(1)](https://en.wikipedia.org/wiki/LALR_parser), Earley, and CYK
-parsing algorithms, and XFormula's default features are designed to be
-compatible with the LALR(1) algorithm, which is renowned for its speed and
-efficiency in both time (CPU) and space (memory).
+Under the hood, XFormula generates an
+<a href="https://en.wikipedia.org/wiki/Extended_Backus%E2%80%93Naur_form" target="_blank">EBNF</a>
+grammar for
+<a href="https://lark-parser.readthedocs.io/" target="_blank">Lark Parser Toolkit</a>,
+while providing the type system, object model, transformation logic, and
+customization layer around it.
+
+Lark supports
+<a href="https://en.wikipedia.org/wiki/LALR_parser" target="_blank">LALR(1)</a>,
+Earley, and CYK
+parsing algorithms, and XFormula's default features are additionally designed
+to be compatible with the LALR(1) algorithm, since it is known for its speed
+and efficiency in both time (CPU) and space (memory).
+
+### Core Model
+
+XFormula separates three concerns that are often mixed together in parser
+implementations:
+
+1. **Lexical syntax**: What text should be recognized as a token?
+2. **Grammar**: How are those tokens composed into language constructs?
+3. **Semantic transformation**: How does the parse result become an AST node?
+
+A "feature" can participate in all three.
+
+### Dynamic Syntax
+
+A syntax feature does not need to modify a central grammar definition. Instead,
+it contributes definitions to a shared syntax context. Other definitions can
+discover those contributions through "tags" and "priorities."
+
+For example:
+
+```text
+BOOL token ───────────> Bool ─────┐
+                                  │
+NONE token ───────────> None_ ────┤
+                                  │
+                                  └──> Literal ───> Start
+```
+
+Adding another literal feature can extend the same structure without modifying
+the existing `Literal` implementation. This is particularly useful for
+languages that have optional syntax, experimental features, dialects, or
+domain-specific extensions.
+
+The main building blocks behind this mechanism are:
+
+* [`EBNFExpressionBuilderProtocol`](src/xformula/syntax/grammar/definitions/abc/ebnf_expression_builder_protocol.py#L164)
+* [`SyntaxContext`](src/xformula/syntax/core/context/abc/syntax_context.py#L104)
+* [`TaggedDefinitionIterator`](src/xformula/syntax/core/customization/tagging/tagged_definition_iterator.py#L13)
+
+### AST Composition
+
+XFormula uses inheritance to represent the relationships between language
+constructs. For example, a parsed `Bool` node can participate in the broader
+AST hierarchy:
+
+```text
+Bool
+└── Literal
+    └── Term
+        └── Primary
+            └── Operand
+                └── SimpleExpression
+                    └── Expression
+                        └── Node
+```
+
+Because the language model is represented directly in the Python type
+hierarchy, generic operations can work against abstractions such as `Literal`,
+`Expression`, or `Node` without requiring every concrete syntax feature to be
+explicitly registered.
+
+For example:
+
+```python
+parser.parse("none").__class__.__mro__
+```
+
+produces an inheritance chain similar to:
+
+```text
+None_
+Literal
+Term
+Primary
+Operand
+SimpleExpression
+Expression
+HasValue
+Node
+Configurable
+ABC
+object
+```
+
+The important consequence is that syntax features can specialize a common
+language model without losing their semantic identity.
 
 ## Usage
 
-If you are already familiar with the terminology, the best way to understand
-how to use XFormula is by examining the following modules:
+The easiest way to understand XFormula is to build a language feature.
 
-- [xformula.syntax.ast](src/xformula/syntax/ast/nodes/abc)
-- [xformula.syntax.core.features](src/xformula/syntax/core/features)
-- [xformula.syntax.core.operations.default_operator_precedences](src/xformula/syntax/core/operations/default_operator_precedences.py#L16)
+We will re-define two literals; bool and none:
 
-The final [EBNF](https://en.wikipedia.org/wiki/Extended_Backus–Naur_form)
-grammar, generated automatically by XFormula using the default features, is
-output to the [out/Grammar.lark](out/Grammar.lark) file.
+```text
+true
+false
+none
+```
 
-To illustrate the development process, let’s define a few simple syntax
-features and their corresponding AST nodes for the `none` and `bool` types.
+and turn them into these AST nodes:
 
-### Defining Tokens
+```python
+Bool(value=True)
+Bool(value=False)
+None_(value=None)
+```
 
-The first step is to specify how the tokens should be parsed.
+### Define Tokens
+
+A terminal describes how the lexer recognizes a piece of source text and how
+that token is transformed at runtime.
 
 ```python
 from xformula.runtime.core.context.abc import RuntimeContext
@@ -69,24 +164,15 @@ from xformula.syntax.grammar.terminals.abc import Terminal
 from xformula.syntax.lexer.tokens.abc import Token
 
 
-class NONE(
-    # Note: The `Terminal` class is generic and requires the type of the
-    # transformed token as a type argument.
-    Terminal[None],
-):
-    class Meta:
+class NONE(Terminal[None]):
 
-        # The priority of the terminal in the lexer rules.
+    class Meta:
         priority = 2000
 
         tags = {
-            # The priority of this terminal in the `None` non-terminal grammar
-            # rules group.
             non_terminal("None"): 0,
         }
 
-    # The grammar definition of the terminal,
-    # that will be used by the lexer.
     def build_grammar(self) -> str:
         define = self.ebnf.define
         regex = self.ebnf.regex
@@ -96,30 +182,20 @@ class NONE(
 
         return define(regex(bound(word("none"))))
 
-    # The runtime transformation of the token.
     def transform_token(
         self,
         runtime_context: RuntimeContext,
         token: Token,
     ) -> None:
-        # The token is already of type `None`.
         return None
 ```
 
-Next, define the `bool` type:
+The boolean token works in exactly the same way:
 
 ```python
-from xformula.runtime.core.context.abc import RuntimeContext
-from xformula.syntax.grammar.ebnf import non_terminal
-from xformula.syntax.grammar.terminals.abc import Terminal
-from xformula.syntax.lexer.tokens.abc import Token
+class BOOL(Terminal[bool]):
 
-
-class BOOL(
-    Terminal[bool],
-):
     class Meta:
-
         priority = 2000
 
         tags = {
@@ -148,17 +224,16 @@ class BOOL(
         runtime_context: RuntimeContext,
         token: Token,
     ) -> bool:
-        # Transform the `false` and `true` tokens into False and True,
-        # respectively.
         return token.value.lower() == "true"
 ```
 
-### Defining AST Nodes
+The important part is not the regular expression itself. It is the boundary
+between **syntax recognition** and **typed runtime values**.
 
-Defining the AST nodes for the `none` and `bool` types is straightforward,
-thanks to the comprehensive `xformula.syntax.ast` module.
+### Define AST Nodes
 
-For the `none` type:
+For literals, XFormula provides a generic `Literal` node that can be
+specialized for different value types.
 
 ```python
 import dataclasses
@@ -167,13 +242,7 @@ from xformula.syntax.ast.nodes import Literal
 
 
 @dataclasses.dataclass()
-class None_(
-    # Note: The `Literal` class is generic and requires the type of the
-    # transformed token as a type argument.
-    Literal[None],
-):
-
-    # The `value` field is implemented with the `None` type.
+class None_(Literal[None]):
     value: None = dataclasses.field(
         kw_only=True,
         init=False,
@@ -181,33 +250,36 @@ class None_(
     )
 ```
 
-And for the `bool` type:
-
 ```python
-import dataclasses
-
-from xformula.syntax.ast.nodes import Literal
-
-
 @dataclasses.dataclass()
-class Bool(
-    Literal[bool],
-):
-
-    # The `value` field is implemented with the `bool` type.
+class Bool(Literal[bool]):
     value: bool = dataclasses.field(
         kw_only=True,
-        default=bool(),
+        default=False,
     )
 ```
 
-### Transforming Tokens into AST Nodes
+The AST therefore keeps the semantic value rather than the original source
+representation.
 
-Once the syntax features and AST nodes are defined, the next step is to specify
-how tokens should be transformed into AST nodes.
+```text
+"true"
+   ↓
+BOOL token
+   ↓
+bool("true")
+   ↓
+Bool(value=True)
+```
 
-Define the `None` non-terminal as follows (note that `None` is reserved in
-Python, so we use `None_` instead):
+That pipeline is the foundation for the rest of the language.
+
+### Connect Grammar to AST
+
+A non-terminal describes how a grammar construct is assembled and, when
+necessary, how its parse tree should be transformed.
+
+For `None`:
 
 ```python
 from xformula.runtime.core.context.abc import RuntimeContext
@@ -217,36 +289,20 @@ from xformula.syntax.grammar.non_terminals.abc import NonTerminal
 from xformula.syntax.parser.trees.abc import ParseTree
 
 
-# `None` is reserved in Python, so we use `None_` instead.
-class None_(
-    NonTerminal[NoneNode],
-):
-    class Meta:
+class None_(NonTerminal[NoneNode]):
 
-        # This will replace the default definition name `None_`.
+    class Meta:
         definition_name = "None"
 
-        # Mark this non-terminal as atomic.
-        # This means that we want to use our custom transformation logic
-        # for the parse tree of this non-terminal.
-        # See the `transform_parse_tree` method below.
         atomic = True
 
         tags = {
             non_terminal("Literal"): -1000,
         }
 
-    # The grammar definition of the non-terminal.
     def build_grammar(self) -> str:
-        # Since we tagged the `NONE` terminal with the `None` non-terminal,
-        # we can automatically reference it here.
-        # And, if another feature is added that tags the `None` non-terminal,
-        # the related terminals/non-terminals will be included here as well.
-        # Respecting the priority levels of the tags.
         return self.ebnf.define_tagged_alternation()
 
-    # The runtime transformation of the parse tree.
-    # This is where we transform the parse tree into an AST node.
     def transform_parse_tree(
         self,
         runtime_context: RuntimeContext,
@@ -255,7 +311,8 @@ class None_(
         return NoneNode()
 ```
 
-Similarly, define the `Bool` non-terminal:
+The boolean non-terminal can consume the already transformed value produced by
+`BOOL`:
 
 ```python
 from typing import cast
@@ -267,11 +324,9 @@ from xformula.syntax.grammar.non_terminals.abc import NonTerminal
 from xformula.syntax.parser.trees.abc import ParseTree
 
 
-class Bool(
-    NonTerminal[BoolNode],
-):
-    class Meta:
+class Bool(NonTerminal[BoolNode]):
 
+    class Meta:
         atomic = True
 
         tags = {
@@ -286,16 +341,16 @@ class Bool(
         runtime_context: RuntimeContext,
         tree: ParseTree[bool],
     ) -> BoolNode:
-        # The `Bool` non-terminal has only one child, the transformed value
-        # from the `BOOL` terminal.
         value = cast(bool, tree.children[0])
-        # Return the `bool` node with that transformed value.
+
         return BoolNode(
             value=value,
         )
 ```
 
-Lastly, define the non-terminal for `Literal`:
+The final `Literal` non-terminal does not need to directly know which literal
+types exist. It simply collects the definitions that have been tagged as
+`Literal`:
 
 ```python
 from typing import TypeVar, cast
@@ -310,22 +365,16 @@ from xformula.syntax.parser.trees.abc import ParseTree
 T = TypeVar("T")
 
 
-class Literal(
-    NonTerminal[
-        LiteralNode[T],
-    ],
-):
-    class Meta:
+class Literal(NonTerminal[LiteralNode[T]]):
 
+    class Meta:
         tags = {
-            # Mark this non-terminal as the start rule of the grammar.
             non_terminal("Start"): -1,
         }
 
     def build_grammar(self) -> str:
         return self.ebnf.define_tagged_alternation()
 
-    # Default transformation for non-atomic non-terminals.
     def transform_parse_tree(
         self,
         runtime_context: RuntimeContext,
@@ -334,10 +383,14 @@ class Literal(
         return cast(LiteralNode, tree.children[0])
 ```
 
-### Setting Up the Feature
+This is where the compositional model becomes completely visible. `Literal`
+does not manually enumerate `Bool` and `None_`. The features declare their
+relationship to `Literal`, and XFormula assembles the grammar from those
+declarations.
 
-To use these features, define a feature class that modifies the syntax context
-during setup:
+### Package the Syntax as a Feature
+
+A feature is the unit XFormula uses to compose language functionality.
 
 ```python
 from xformula.syntax.core.features.abc import Feature
@@ -362,15 +415,15 @@ class LiteralFeature(Feature):
         )
 ```
 
-### Initializing the Parser
+This is the point where the pieces become a language component. A feature can
+now be enabled, combined with other features, or omitted entirely.
 
-Finally, initialize the parser:
+### Build the Parser
+
+The parser is created from a `SyntaxContext`.
 
 ```python
 from xformula.syntax.core.context import SyntaxContext
-# Note: We tagged our `Literal` non-terminal with the `Start` non-terminal.
-# If the `Start` non-terminal is not defined, you can either define it or use
-# the `PolyfillFeature` to handle it automatically.
 from xformula.syntax.core.features.polyfill import PolyfillFeature
 from xformula.syntax.parser import Parser
 
@@ -378,33 +431,37 @@ from xformula.syntax.parser import Parser
 syntax_context = SyntaxContext(
     feature_types=[
         LiteralFeature,
-        # `PolyfillFeature` automatically defines any missing tags as
-        # non-atomic non-terminals during setup.
         PolyfillFeature,
     ],
 )
 
 parser = Parser(
     syntax_context=syntax_context,
-    # Optionally, you can also pass a runtime context here to customize or
-    # override the default.
 )
-
-# Parse an input string.
-ast = parser.parse("true")
-
-# Outputs: Bool(value=True)
-print(ast)
-
-# Outputs: True
-print(ast.value)
-
-# Outputs: None_(value=None)
-print(parser.parse("none"))
 ```
 
-The generated grammar is accessible via the `ebnf_document` attribute of the
-parser. In this example, it might look like:
+Now the language can be used:
+
+```python
+ast = parser.parse("true")
+
+print(ast)
+# Bool(value=True)
+
+print(ast.value)
+# True
+
+print(parser.parse("none"))
+# None_(value=None)
+```
+
+The generated grammar is also available:
+
+```python
+print(parser.ebnf_document)
+```
+
+For this example, the result is approximately:
 
 ```ebnf
 ?start : literal
@@ -417,80 +474,78 @@ bool : BOOL
 none : NONE
 
 BOOL.2000 : /\bfalse\b|\btrue\b/
-
 NONE.2000 : /\bnone\b/
 ```
 
-As you can see, the `start` rule is prefixed with a `?` character. This is
-because the `PolyfillFeature` automatically defines the `Start` non-terminal as
-non-atomic. Since it does not have specific transformation logic and is used
-only for tagging purposes, the parser automatically replaces the `Start`
-non-terminal's parse tree with that of the `Literal` non-terminal. Likewise,
-because `Literal` is also non-atomic, its parse tree is further replaced by
-that of the `Bool` or `None` non-terminal based on the input. This approach
-helps avoid deep nesting of AST nodes while leveraging the inheritance and
-polymorphism features of OOP.
+The grammar is therefore an artifact of the feature composition rather than the
+primary source of truth.
 
-To observe the default polymorphism, you can inspect the
-[MRO](https://docs.python.org/3/howto/mro.html) of an AST node class, similar
-to the following:
+### Keeping the Grammar Small
 
-```python
->>> parser.parse("none").__class__.__mro__
-(
-  <class 'xformula.syntax.core.features.literals.ast.nodes.none_.None_'>,
-  <class 'xformula.syntax.ast.nodes.abc.literal.Literal'>,
-  <class 'xformula.syntax.ast.nodes.abc.term.Term'>,
-  <class 'xformula.syntax.ast.nodes.abc.primary.Primary'>,
-  <class 'xformula.syntax.ast.nodes.abc.operand.Operand'>,
-  <class 'xformula.syntax.ast.nodes.abc.simple_expression.SimpleExpression'>,
-  <class 'xformula.syntax.ast.nodes.abc.expression.Expression'>,
-  <class 'xformula.syntax.ast.nodes.abc.has_value.HasValue'>,
-  <class 'typing.Generic'>,
-  <class 'xformula.syntax.ast.nodes.abc.node.Node'>,
-  <class 'xformula.arch.meta.configurable.Configurable'>,
-  <class 'abc.ABC'>,
-  <class 'object'>
-)
+XFormula intentionally uses non-atomic non-terminals where no custom
+transformation is required.
+
+Consider:
+
+```ebnf
+?start : literal
+?literal : bool | none
 ```
 
-### Dynamic Syntax Concept
+The leading `?` tells Lark that these rules do not need to create an additional
+tree node. XFormula can therefore use intermediate grammar rules to compose the
+language without forcing those rules to become unnecessary AST layers.
+This keeps the resulting AST focused on semantic constructs rather than
+implementation details of the grammar.
 
-As demonstrated above, syntax features are defined in a modular way. The
-dynamic syntax concept further enhances this modularity by allowing you to plug
-in or remove features without modifying the core syntax definition.
-
-For more low-level details, refer to the following classes:
-
-- [xformula.syntax.EBNFExpressionBuilderProtocol](src/xformula/syntax/grammar/definitions/abc/ebnf_expression_builder_protocol.py#L164)
-- [xformula.syntax.SyntaxContext](src/xformula/syntax/core/context/abc/syntax_context.py#L104)
-- [xformula.syntax.TaggedDefinitionIterator](src/xformula/syntax/core/customization/tagging/tagged_definition_iterator.py#L13)
+The `PolyfillFeature` can also provide missing non-terminals automatically when
+they are only needed as structural or tagging points.
 
 ## Portability
 
-Since Lark is available for various programming languages, the grammars
-generated by XFormula can be used in those languages out of the box. To achieve
-the same dynamic transformation capabilities as XFormula's generated parser, it
-is necessary to align with the
-[NonTerminalOperationClassBuilder.transform_parse_tree](src/xformula/syntax/core/features/operations/runtime/reflection/non_terminal_operation_class_builder.py#L236)
-function, which automatically resolves operator associativity and precedence.
+XFormula generates EBNF for Lark Parser Toolkit. This keeps the generated
+grammar separate from the Python implementation of the language itself.
+The grammar can therefore serve as an interchange point for environments that
+support Lark-compatible grammars.
 
-For a list of available Lark implementations, see the
-[extra features](https://lark-parser.readthedocs.io/en/stable/features.html#extra-features)
-section in the Lark documentation.
+The dynamic transformation behavior provided by XFormula is more specific to
+the XFormula runtime. Reproducing that behavior elsewhere requires equivalent
+transformation logic, particularly the automatic operator precedence and
+associativity handling implemented by:
 
-## Real-world Example
+- [`NonTerminalOperationClassBuilder.transform_parse_tree`](src/xformula/syntax/core/features/operations/runtime/reflection/non_terminal_operation_class_builder.py#L236)
 
-For an overview of the default features and an example runtime implementation
-for the language, check out the
-[django-xformula](https://github.com/ertgl/django-xformula) project. This
-[Django](https://www.djangoproject.com/) application transforms formulas into
-SQL queries using Django's powerful
-[ORM](https://en.wikipedia.org/wiki/Object–relational_mapping) capabilities.
+See the
+<a href="https://lark-parser.readthedocs.io/en/stable/features.html#extra-features" target="_blank">extra features</a>
+section in the Lark documentation for the available implementations.
+
+## A Practical Example
+
+<a href="https://github.com/ertgl/django-xformula" target="_blank">django-xformula</a>
+uses XFormula to transform formulas into SQL queries through
+<a href="https://www.djangoproject.com/" target="_blank">Django</a>'s
+<a href="https://en.wikipedia.org/wiki/Object%E2%80%93relational_mapping" target="_blank">ORM</a>.
+
+That is a useful demonstration of the architecture in practice:
+
+```text
+User formula
+     │
+     ▼
+   Parser
+     │
+     ▼
+    AST
+     │
+     ▼
+ Django ORM expression
+     │
+     ▼
+    SQL
+```
 
 ## License
 
 This project is licensed under the
-[MIT License](https://opensource.org/license/mit).
-
-See the [LICENSE](LICENSE) file for more information.
+<a href="https://opensource.org/license/mit" target="_blank">MIT License</a>.
+See the [LICENSE](LICENSE) file for details.
