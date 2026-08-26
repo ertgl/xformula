@@ -1,15 +1,29 @@
 # XFormula
 
-A modular language front-end and parser generator for building
+XFormula is a modular language front-end and parser generator for building
 <a href="https://en.wikipedia.org/wiki/Domain-specific_language" target="_blank">domain-specific languages</a> (DSLs).
+
+A language rarely stays small. A new literal becomes a new expression. An
+optional syntax becomes a dialect. An experimental feature needs to be enabled
+without rewriting unrelated grammar. An
+<a href="https://en.wikipedia.org/wiki/Abstract_syntax_tree" target="_blank">AST</a>
+node needs to participate in the language without being manually threaded
+through every production.
+
+XFormula is designed for that kind of evolution:
+**build languages as systems, not as monolithic grammars.**
 
 ## Table of Contents
 
 - [Overview](#overview)
-  - [Core Model](#core-model)
+  - [The Problem](#the-problem)
+  - [The Solution](#the-solution)
+  - [The Core Idea](#the-core-idea)
   - [Dynamic Syntax](#dynamic-syntax)
   - [AST Composition](#ast-composition)
-- [Usage](#usage)
+  - [Summary](#summary)
+- [A Practical Example](#a-practical-example)
+  - [Install the Package](#install-the-package)
   - [Define Tokens](#define-tokens)
   - [Define AST Nodes](#define-ast-nodes)
   - [Connect Grammar to AST](#connect-grammar-to-ast)
@@ -17,51 +31,101 @@ A modular language front-end and parser generator for building
   - [Build the Parser](#build-the-parser)
   - [Keeping the Grammar Small](#keeping-the-grammar-small)
 - [Portability](#portability)
-- [A Practical Example](#a-practical-example)
+- [A Practical Application](#a-practical-application)
 - [License](#license)
 
 ## Overview
 
-In XFormula, syntax is assembled from independent features. A feature can
-introduce tokens, grammar rules,
-<a href="https://en.wikipedia.org/wiki/Abstract_syntax_tree" target="_blank">AST</a>
-nodes, and the transformations that
-connect them. Features can then be combined, extended, or removed without
-rewriting the rest of the language.
-
-The result is a language definition that can evolve as a system rather than as
-a single grammar file.
+Instead of treating the grammar as the language's central source of truth,
+XFormula lets independent "features" contribute syntax, grammar, AST nodes,
+and semantic transformations. The language is assembled from those features.
 
 Under the hood, XFormula generates an
 <a href="https://en.wikipedia.org/wiki/Extended_Backus%E2%80%93Naur_form" target="_blank">EBNF</a>
 grammar for
-<a href="https://lark-parser.readthedocs.io/" target="_blank">Lark Parser Toolkit</a>,
-while providing the type system, object model, transformation logic, and
-customization layer around it.
+<a href="https://lark-parser.readthedocs.io/" target="_blank">Lark Parser Toolkit</a>.
+Around that grammar, it provides the type system, object model, transformation
+logic, and customization layer needed to build a composable language; so one
+can add language features without turning the grammar into the place where the
+whole language has to be known.
 
-Lark supports
+For flexibility, Lark supports
 <a href="https://en.wikipedia.org/wiki/LALR_parser" target="_blank">LALR(1)</a>,
 Earley, and CYK
 parsing algorithms, and XFormula's default features are additionally designed
 to be compatible with the LALR(1) algorithm, since it is known for its speed
 and efficiency in both time (CPU) and space (memory).
 
-### Core Model
+### The Problem
+
+A feature that should be independent becomes another production. A production
+needs to know about every possible alternative. AST construction becomes tied
+to grammar structure. Optional syntax creates conditional branches. Removing a
+feature means finding and correcting every place where the grammar and
+transformations know about it.
+
+The language becomes difficult to evolve because its pieces are no longer
+independent.
+
+### The Solution
+
+XFormula takes the opposite approach. A feature can declare:
+
+- the tokens it introduces,
+- the grammar constructs it provides,
+- the AST nodes those constructs produce,
+- and the transformations that connect parsed input to semantic objects.
+
+Those declarations are composed through a shared syntax context. The central
+grammar does not need to enumerate every concrete feature. That means a
+language can evolve by composition rather than by continually rewriting its
+grammar.
+
+### The Core Idea
 
 XFormula separates three concerns that are often mixed together in parser
 implementations:
 
-1. **Lexical syntax**: What text should be recognized as a token?
+1. **Lexical syntax**: What source text should be recognized as a token?
 2. **Grammar**: How are those tokens composed into language constructs?
 3. **Semantic transformation**: How does the parse result become an AST node?
 
 A "feature" can participate in all three.
 
+```text
+Source text
+    │
+    ▼
+┌────────────────┐
+│ Lexical syntax │  What is this?
+└───────┬────────┘
+        │
+        ▼
+┌───────────────┐
+│    Grammar    │  How does it compose?
+└───────┬───────┘
+        │
+        ▼
+┌────────────────────┐
+│ Semantic transform │  What does it mean?
+└──────────┬─────────┘
+           │
+           ▼
+          AST
+```
+
+This separation gives each feature a clear responsibility while allowing the
+language as a whole to remain compositional.
+
 ### Dynamic Syntax
 
+The key mechanism behind the modularity provided by XFormula is
+**dynamic syntax composition**.
+
 A syntax feature does not need to modify a central grammar definition. Instead,
-it contributes definitions to a shared syntax context. Other definitions can
-discover those contributions through "tags" and "priorities."
+it contributes definitions to a shared
+[`SyntaxContext`](src/xformula/syntax/core/context/abc/syntax_context.py#L104).
+Other definitions discover those contributions through "tags" and "priorities."
 
 For example:
 
@@ -73,10 +137,20 @@ NONE token ───────────> None_ ────┤
                                   └──> Literal ───> Start
 ```
 
-Adding another literal feature can extend the same structure without modifying
-the existing `Literal` implementation. This is particularly useful for
-languages that have optional syntax, experimental features, dialects, or
-domain-specific extensions.
+`Literal` does not need to know that `Bool` and `None_` exist.
+
+The concrete features declare their relationship to `Literal`. XFormula
+assembles the resulting grammar from those declarations. Adding another literal
+therefore extends the same language structure without requiring the existing
+`Literal` implementation to be rewritten.
+
+This is useful when a language has:
+
+- optional syntax,
+- experimental features,
+- dialects,
+- domain-specific extensions,
+- independently developed language features.
 
 The main building blocks behind this mechanism are:
 
@@ -86,9 +160,13 @@ The main building blocks behind this mechanism are:
 
 ### AST Composition
 
-XFormula uses inheritance to represent the relationships between language
-constructs. For example, a parsed `Bool` node can participate in the broader
-AST hierarchy:
+Syntax composition is only useful if the resulting semantic model composes as
+well.
+
+XFormula represents relationships between language constructs directly in the
+Python type hierarchy.
+
+For example:
 
 ```text
 Bool
@@ -101,12 +179,20 @@ Bool
                         └── Node
 ```
 
-Because the language model is represented directly in the Python type
-hierarchy, generic operations can work against abstractions such as `Literal`,
+A parsed
+[Bool](src/xformula/syntax/core/features/literals/ast/nodes/bool.py#L11)
+is therefore not merely a concrete parser result. It is also a
+[Literal](src/xformula/syntax/ast/nodes/abc/literal.py#L15), a
+[Term](src/xformula/syntax/ast/nodes/abc/term.py#L9), an
+[Operand](src/xformula/syntax/ast/nodes/abc/operand.py#L14), an
+[Expression](src/xformula/syntax/ast/nodes/abc/expression.py#L8), and a
+[Node](src/xformula/syntax/ast/nodes/abc/node.py#L9).
+
+This allows generic operations to work against abstractions such as `Literal`,
 `Expression`, or `Node` without requiring every concrete syntax feature to be
 explicitly registered.
 
-For example:
+For one more example:
 
 ```python
 parser.parse("none").__class__.__mro__
@@ -129,14 +215,32 @@ ABC
 object
 ```
 
-The important consequence is that syntax features can specialize a common
-language model without losing their semantic identity.
+The important consequence is that a syntax feature can specialize the common
+language model without losing its semantic identity.
 
-## Usage
+### Summary
 
-The easiest way to understand XFormula is to build a language feature.
+XFormula is not merely:
 
-We will re-define two literals; bool and none:
+- A collection of regular expressions.
+- A static grammar file.
+- A wrapper around Lark.
+- A parser with a different API.
+
+Rather, it is:
+
+- A modular language front-end. See the list of
+  [default operators and precedences](src/xformula/syntax/core/operations/default_operator_precedences.py#L16).
+- A parser generator built around feature composition.
+- A system for composing lexical syntax, grammar, AST nodes, and transformations.
+- A generator of EBNF grammars for Lark.
+- A typed object model for language constructs.
+- A customization layer for evolving DSLs.
+
+## A Practical Example
+
+For demonstration purposes, we will re-build the two literals `bool` and
+`none`:
 
 ```text
 true
@@ -152,10 +256,18 @@ Bool(value=False)
 None_(value=None)
 ```
 
+### Install the Package
+
+```sh
+pip install xformula
+```
+
 ### Define Tokens
 
-A terminal describes how the lexer recognizes a piece of source text and how
-that token is transformed at runtime.
+A `terminal` describes how the lexer recognizes source text and how that token
+is transformed at runtime.
+
+The none token:
 
 ```python
 from xformula.runtime.core.context.abc import RuntimeContext
@@ -190,7 +302,7 @@ class NONE(Terminal[None]):
         return None
 ```
 
-The boolean token works in exactly the same way:
+The `boolean` token works in exactly the same way:
 
 ```python
 class BOOL(Terminal[bool]):
@@ -227,8 +339,18 @@ class BOOL(Terminal[bool]):
         return token.value.lower() == "true"
 ```
 
-The important part is not the regular expression itself. It is the boundary
+The regular expressions are the easy part. The important boundary is the one
 between **syntax recognition** and **typed runtime values**.
+
+```text
+"true"
+   ↓
+BOOL token
+   ↓
+bool("true")
+   ↓
+Bool(value=True)
+```
 
 ### Define AST Nodes
 
@@ -259,24 +381,12 @@ class Bool(Literal[bool]):
     )
 ```
 
-The AST therefore keeps the semantic value rather than the original source
+The AST stores the **semantic value** rather than the original source
 representation.
-
-```text
-"true"
-   ↓
-BOOL token
-   ↓
-bool("true")
-   ↓
-Bool(value=True)
-```
-
-That pipeline is the foundation for the rest of the language.
 
 ### Connect Grammar to AST
 
-A non-terminal describes how a grammar construct is assembled and, when
+A `non-terminal` describes how a grammar construct is assembled and, when
 necessary, how its parse tree should be transformed.
 
 For `None`:
@@ -311,8 +421,8 @@ class None_(NonTerminal[NoneNode]):
         return NoneNode()
 ```
 
-The boolean non-terminal can consume the already transformed value produced by
-`BOOL`:
+The `Bool` non-terminal can consume the already transformed value produced by
+`BOOL` terminal:
 
 ```python
 from typing import cast
@@ -348,8 +458,7 @@ class Bool(NonTerminal[BoolNode]):
         )
 ```
 
-The final `Literal` non-terminal does not need to directly know which literal
-types exist. It simply collects the definitions that have been tagged as
+Finally, `Literal` collects whatever definitions have tagged themselves as
 `Literal`:
 
 ```python
@@ -383,10 +492,10 @@ class Literal(NonTerminal[LiteralNode[T]]):
         return cast(LiteralNode, tree.children[0])
 ```
 
-This is where the compositional model becomes completely visible. `Literal`
-does not manually enumerate `Bool` and `None_`. The features declare their
-relationship to `Literal`, and XFormula assembles the grammar from those
-declarations.
+Notice what is missing. `Literal` does not enumerate `Bool` and `None_`. It
+does not need to know which literal features exist. The concrete features
+declare their relationships, and XFormula assembles the language from those
+declarations. That is the base of the compositional model.
 
 ### Package the Syntax as a Feature
 
@@ -477,7 +586,7 @@ BOOL.2000 : /\bfalse\b|\btrue\b/
 NONE.2000 : /\bnone\b/
 ```
 
-The grammar is therefore an artifact of the feature composition rather than the
+Note that the grammar is an artifact of the feature composition rather than the
 primary source of truth.
 
 ### Keeping the Grammar Small
@@ -493,40 +602,42 @@ Consider:
 ```
 
 The leading `?` tells Lark that these rules do not need to create an additional
-tree node. XFormula can therefore use intermediate grammar rules to compose the
+tree node, so XFormula can use intermediate grammar rules to compose the
 language without forcing those rules to become unnecessary AST layers.
 This keeps the resulting AST focused on semantic constructs rather than
 implementation details of the grammar.
 
-The `PolyfillFeature` can also provide missing non-terminals automatically when
-they are only needed as structural or tagging points.
+Also, the `PolyfillFeature` provides missing non-terminals automatically and
+non-atomically when they are only needed as structural or tagging points.
 
 ## Portability
 
 XFormula generates EBNF for Lark Parser Toolkit. This keeps the generated
 grammar separate from the Python implementation of the language itself.
 The grammar can therefore serve as an interchange point for environments that
-support Lark-compatible grammars.
+support Lark-compatible implementations.
 
 The dynamic transformation behavior provided by XFormula is more specific to
 the XFormula runtime. Reproducing that behavior elsewhere requires equivalent
 transformation logic, particularly the automatic operator precedence and
 associativity handling implemented by:
 
+- [`DEFAULT_OPERATOR_PRECEDENCES`](src/xformula/syntax/core/operations/default_operator_precedences.py#L16)
 - [`NonTerminalOperationClassBuilder.transform_parse_tree`](src/xformula/syntax/core/features/operations/runtime/reflection/non_terminal_operation_class_builder.py#L236)
 
 See the
 <a href="https://lark-parser.readthedocs.io/en/stable/features.html#extra-features" target="_blank">extra features</a>
 section in the Lark documentation for the available implementations.
 
-## A Practical Example
+## A Practical Application
 
 <a href="https://github.com/ertgl/django-xformula" target="_blank">django-xformula</a>
-uses XFormula to transform formulas into SQL queries through
+uses XFormula and its default syntax features to transform formulas into SQL
+queries through
 <a href="https://www.djangoproject.com/" target="_blank">Django</a>'s
 <a href="https://en.wikipedia.org/wiki/Object%E2%80%93relational_mapping" target="_blank">ORM</a>.
 
-That is a useful demonstration of the architecture in practice:
+Simply, the architecture is:
 
 ```text
 User formula
